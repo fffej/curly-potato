@@ -3,94 +3,135 @@
 <head>
     <title>GitHub PR Analysis Dashboard</title>
     <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
-    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <style>
-        body {
-            font-family: Arial, sans-serif;
-            margin: 20px;
-            max-width: 1200px;
-            margin: 0 auto;
-            padding: 20px;
-        }
         .controls {
-            margin-bottom: 20px;
+            margin: 20px;
             padding: 15px;
-            background-color: #f5f5f5;
+            border: 1px solid #ddd;
             border-radius: 5px;
         }
         .control-group {
-            margin-bottom: 10px;
+            margin: 10px 0;
         }
         .stats {
-            margin-top: 20px;
+            margin: 20px;
             padding: 15px;
-            background-color: #f5f5f5;
+            border: 1px solid #ddd;
             border-radius: 5px;
+        }
+        .stats-container {
+            display: flex;
+            gap: 20px;
+        }
+        .stats-section {
+            flex: 1;
+            padding: 10px;
         }
     </style>
 </head>
 <body>
     <h1>GitHub PR Analysis Dashboard</h1>
     <p><em>Note: Analysis excludes bot authors (renovate and dependabot)</em></p>
-    
+
     <div class="controls">
         <div class="control-group">
-            <label>Date Range:</label><br>
-            <input type="date" id="start-date" value="{{ min_date }}">
-            to
-            <input type="date" id="end-date" value="{{ max_date }}">
-            <button onclick="updatePlot()">Update Analysis</button>
+            <label for="year">Primary Year:</label>
+            <select id="year">
+                {% for year in years %}
+                <option value="{{ year }}" {% if year == current_year %}selected{% endif %}>{{ year }}</option>
+                {% endfor %}
+            </select>
         </div>
+        <div class="control-group">
+            <label for="comparison_year">Compare with Year:</label>
+            <select id="comparison_year">
+                <option value="">None</option>
+                {% for year in years %}
+                <option value="{{ year }}">{{ year }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <button onclick="updateAnalysis()">Update Analysis</button>
     </div>
 
     <div id="plot"></div>
-    
+
     <div class="stats">
         <h3>Summary Statistics</h3>
-        <div id="summary-stats"></div>
+        <div class="stats-container">
+            <div id="primary-stats" class="stats-section">
+                <h4>Primary Year Statistics</h4>
+                <div id="primary-stats-content"></div>
+            </div>
+            <div id="comparison-stats" class="stats-section" style="display: none;">
+                <h4>Comparison Year Statistics</h4>
+                <div id="comparison-stats-content"></div>
+            </div>
+        </div>
     </div>
 
     <script>
-        function updatePlot() {
-            const startDate = $('#start-date').val();
-            const endDate = $('#end-date').val();
+        // Initialize with current year on page load
+        document.addEventListener('DOMContentLoaded', function() {
+            updateAnalysis();
+        });
+
+        function updateAnalysis() {
+            const year = document.getElementById('year').value;
+            const comparison_year = document.getElementById('comparison_year').value;
             
-            $.ajax({
-                url: '/update_plot',
+            fetch('/update_plot', {
                 method: 'POST',
-                contentType: 'application/json',
-                data: JSON.stringify({
-                    start_date: startDate,
-                    end_date: endDate
-                }),
-                success: function(response) {
-                    if (response.error) {
-                        alert('Error: ' + response.error);
-                        return;
-                    }
-                    Plotly.newPlot('plot', response.plot.data, response.plot.layout);
-                    
-                    // Update summary statistics
-                    const stats = response.stats;
-                    $('#summary-stats').html(`
-                        <p>Average PRs per week: ${stats.avg_prs_per_week.toFixed(2)}</p>
-                        <p>Average contributors per week: ${stats.avg_contributors_per_week.toFixed(2)}</p>
-                        <p>Average PRs per contributor: ${stats.avg_ratio.toFixed(2)}</p>
-                        <p>Total PRs: ${stats.total_prs}</p>
-                        <p>Total weeks analyzed: ${stats.total_weeks}</p>
-                    `);
+                headers: {
+                    'Content-Type': 'application/json',
                 },
-                error: function(xhr, status, error) {
-                    console.error('Error:', error);
-                    alert('Error updating plot: ' + error);
+                body: JSON.stringify({
+                    year: year,
+                    comparison_year: comparison_year || null
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) {
+                    console.error('Error:', data.error);
+                    return;
                 }
+                
+                // Update plot
+                Plotly.newPlot('plot', data.plot.data, data.plot.layout);
+                
+                // Update primary year statistics
+                const primaryStats = data.primary_stats;
+                document.getElementById('primary-stats-content').innerHTML = `
+                    <p>Year: ${primaryStats.year}</p>
+                    <p>Average PRs per week: ${primaryStats.avg_prs_per_week.toFixed(2)}</p>
+                    <p>Average contributors per week: ${primaryStats.avg_contributors_per_week.toFixed(2)}</p>
+                    <p>Average PRs per contributor: ${primaryStats.avg_ratio.toFixed(2)}</p>
+                    <p>Total PRs: ${primaryStats.total_prs}</p>
+                    <p>Weeks analyzed: ${primaryStats.total_weeks}</p>
+                `;
+                
+                // Update comparison year statistics if available
+                const comparisonStatsDiv = document.getElementById('comparison-stats');
+                if (data.comparison_stats) {
+                    const comparisonStats = data.comparison_stats;
+                    document.getElementById('comparison-stats-content').innerHTML = `
+                        <p>Year: ${comparisonStats.year}</p>
+                        <p>Average PRs per week: ${comparisonStats.avg_prs_per_week.toFixed(2)}</p>
+                        <p>Average contributors per week: ${comparisonStats.avg_contributors_per_week.toFixed(2)}</p>
+                        <p>Average PRs per contributor: ${comparisonStats.avg_ratio.toFixed(2)}</p>
+                        <p>Total PRs: ${comparisonStats.total_prs}</p>
+                        <p>Weeks analyzed: ${comparisonStats.total_weeks}</p>
+                    `;
+                    comparisonStatsDiv.style.display = 'block';
+                } else {
+                    comparisonStatsDiv.style.display = 'none';
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
             });
         }
-        
-        // Initial plot
-        $(document).ready(function() {
-            updatePlot();
-        });
     </script>
 </body>
 </html>
