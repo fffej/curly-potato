@@ -35,6 +35,14 @@
 
     <div class="controls">
         <div class="control-group">
+            <label for="repository">Repository:</label>
+            <select id="repository">
+                {% for repo in repositories %}
+                <option value="{{ repo }}">{{ repo }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="control-group">
             <label for="year">Primary Year:</label>
             <select id="year">
                 {% for year in years %}
@@ -51,7 +59,7 @@
                 {% endfor %}
             </select>
         </div>
-        <button onclick="updateAnalysis()">Update Analysis</button>
+        <button id="updateButton">Update Analysis</button>
     </div>
 
     <div id="plot"></div>
@@ -71,27 +79,86 @@
     </div>
 
     <script>
-        // Initialize with current year on page load
+        // Get DOM elements
+        const repositorySelect = document.getElementById('repository');
+        const yearSelect = document.getElementById('year');
+        const comparisonYearSelect = document.getElementById('comparison_year');
+        const updateButton = document.getElementById('updateButton');
+        
+        // Add event listeners
+        repositorySelect.addEventListener('change', updateYearOptions);
+        updateButton.addEventListener('click', updateAnalysis);
+        
+        // Initialize on page load
         document.addEventListener('DOMContentLoaded', function() {
-            updateAnalysis();
+            updateYearOptions();
         });
 
-        function updateAnalysis() {
-            const year = document.getElementById('year').value;
-            const comparison_year = document.getElementById('comparison_year').value;
+        async function updateYearOptions() {
+            const repository = repositorySelect.value;
             
-            fetch('/update_plot', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    year: year,
-                    comparison_year: comparison_year || null
-                })
-            })
-            .then(response => response.json())
-            .then(data => {
+            try {
+                const response = await fetch('/get_years', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        repository: repository
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (data.error) {
+                    console.error('Error:', data.error);
+                    return;
+                }
+
+                // Update year dropdowns
+                yearSelect.innerHTML = '';
+                comparisonYearSelect.innerHTML = '<option value="">None</option>';
+                
+                // Add new options
+                data.years.forEach(year => {
+                    // Add to primary year dropdown
+                    const primaryOption = new Option(year, year);
+                    if (year === new Date().getFullYear()) {
+                        primaryOption.selected = true;
+                    }
+                    yearSelect.add(primaryOption);
+                    
+                    // Add to comparison year dropdown
+                    comparisonYearSelect.add(new Option(year, year));
+                });
+                
+                // Update the analysis with new data
+                updateAnalysis();
+            } catch (error) {
+                console.error('Error:', error);
+            }
+        }
+
+        async function updateAnalysis() {
+            const repository = repositorySelect.value;
+            const year = yearSelect.value;
+            const comparison_year = comparisonYearSelect.value;
+            
+            try {
+                const response = await fetch('/update_plot', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        repository: repository,
+                        year: year,
+                        comparison_year: comparison_year || null
+                    })
+                });
+                
+                const data = await response.json();
+                
                 if (data.error) {
                     console.error('Error:', data.error);
                     return;
@@ -127,10 +194,9 @@
                 } else {
                     comparisonStatsDiv.style.display = 'none';
                 }
-            })
-            .catch(error => {
+            } catch (error) {
                 console.error('Error:', error);
-            });
+            }
         }
     </script>
 </body>

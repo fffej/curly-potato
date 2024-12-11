@@ -5,8 +5,27 @@ from flask import Flask, render_template, jsonify, request
 import plotly
 import plotly.graph_objs as go
 from collections import defaultdict
+import os
 
 app = Flask(__name__)
+
+# Load repository configuration from JSON file
+def load_repository_config():
+    try:
+        with open('repositories.json', 'r') as f:
+            config = json.load(f)
+            repos = config['repositories']
+            if not repos:
+                raise ValueError("No repositories defined in config file")
+            return repos
+    except Exception as e:
+        print(f"Error loading repository configuration: {str(e)}")
+        # Fallback to default repository if config fails
+        return {
+            "Default Repository": "pr_data.json"
+        }
+
+REPOSITORIES = load_repository_config()
 
 def load_pr_data(filename):
     with open(filename, 'r') as f:
@@ -18,6 +37,12 @@ def load_pr_data(filename):
     # Extract author login
     df['author_login'] = df['author'].apply(lambda x: x['login'] if x else None)
     return df
+
+def get_repository_data(repo_name):
+    """Get the DataFrame for a specific repository"""
+    if repo_name not in REPOSITORIES:
+        raise ValueError(f"Unknown repository: {repo_name}")
+    return load_pr_data(REPOSITORIES[repo_name])
 
 def process_pr_data(df, year=None, comparison_year=None):
     # Create a copy to avoid modifying the original
@@ -72,7 +97,7 @@ def process_year_data(df, year):
         'year': year
     }
 
-def create_plot(metrics):
+def create_plot(metrics, repo_name):
     fig = go.Figure()
     
     # Add trace for primary year
@@ -106,7 +131,7 @@ def create_plot(metrics):
     month_labels = primary_data['month_labels']
     
     fig.update_layout(
-        title='Weekly PRs per Contributor by Year',
+        title=f'Weekly PRs per Contributor - {repo_name}',
         yaxis_title='PRs per Contributor',
         hovermode='x unified',
         xaxis=dict(
@@ -123,26 +148,56 @@ def create_plot(metrics):
 
 @app.route('/')
 def index():
-    df = load_pr_data('pr_data.json')
-    available_years = sorted(df['createdAt'].dt.year.unique())
-    current_year = datetime.now().year
-    return render_template(
-        'index.html',
-        years=available_years,
-        current_year=current_year
-    )
+    try:
+        # Get the first repository's data to initialize the years list
+        first_repo = next(iter(REPOSITORIES.keys()))
+        df = get_repository_data(first_repo)
+        available_years = sorted(df['createdAt'].dt.year.unique())
+        current_year = datetime.now().year
+        
+        return render_template(
+            'index.html',
+            repositories=list(REPOSITORIES.keys()),
+            years=available_years,
+            current_year=current_year
+        )
+    except Exception as e:
+        error_message = f"Error initializing dashboard: {str(e)}"
+        print(error_message)
+        return render_template(
+            'error.html',
+            error=error_message,
+            repositories=list(REPOSITORIES.keys())
+        )
+
+@app.route('/get_years', methods=['POST'])
+def get_years():
+    try:
+        repo_name = request.json.get('repository')
+        df = get_repository_data(repo_name)
+        # Convert numpy.int32 to native Python integers
+        available_years = sorted(df['createdAt'].dt.year.unique().tolist())
+        return jsonify({
+            'years': available_years
+        })
+    except Exception as e:
+        return jsonify({
+            'error': str(e)
+        }), 500
 
 @app.route('/update_plot', methods=['POST'])
 def update_plot():
     try:
         data = request.json
-        df = load_pr_data('pr_data.json')
+        repo_name = data.get('repository')
+        df = get_repository_data(repo_name)
+        
         metrics = process_pr_data(
             df,
             year=int(data.get('year')),
             comparison_year=int(data.get('comparison_year')) if data.get('comparison_year') else None
         )
-        fig = create_plot(metrics)
+        fig = create_plot(metrics, repo_name)
         
         # Calculate summary statistics for primary year
         primary_stats = {
