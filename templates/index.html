@@ -27,13 +27,11 @@
             background-color: #f5f5f5;
             border-radius: 5px;
         }
-        select {
-            min-width: 200px;
-        }
     </style>
 </head>
 <body>
     <h1>GitHub PR Analysis Dashboard</h1>
+    <p><em>Note: Analysis excludes bot authors (renovate and dependabot)</em></p>
     
     <div class="controls">
         <div class="control-group">
@@ -41,18 +39,8 @@
             <input type="date" id="start-date" value="{{ min_date }}">
             to
             <input type="date" id="end-date" value="{{ max_date }}">
+            <button onclick="updatePlot()">Update Analysis</button>
         </div>
-        
-        <div class="control-group">
-            <label>Exclude Authors:</label><br>
-            <select id="excluded-authors" multiple>
-                {% for author in authors %}
-                <option value="{{ author }}">{{ author }}</option>
-                {% endfor %}
-            </select>
-        </div>
-        
-        <button onclick="updatePlot()">Update Analysis</button>
     </div>
 
     <div id="plot"></div>
@@ -64,7 +52,6 @@
 
     <script>
         function updatePlot() {
-            const excludedAuthors = Array.from($('#excluded-authors').val());
             const startDate = $('#start-date').val();
             const endDate = $('#end-date').val();
             
@@ -73,7 +60,6 @@
                 method: 'POST',
                 contentType: 'application/json',
                 data: JSON.stringify({
-                    excluded_authors: excludedAuthors,
                     start_date: startDate,
                     end_date: endDate
                 }),
@@ -105,7 +91,6 @@
         $(document).ready(function() {
             updatePlot();
         });
-    </script>
     </script>
 </body>
 </html>

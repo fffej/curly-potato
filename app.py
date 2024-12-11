@@ -19,50 +19,66 @@ def load_pr_data(filename):
     df['author_login'] = df['author'].apply(lambda x: x['login'] if x else None)
     return df
 
-def process_pr_data(df, start_date=None, end_date=None, excluded_authors=None):
+def process_pr_data(df, start_date=None, end_date=None):
     # Create a copy to avoid modifying the original
     df = df.copy()
     
-    # Apply filters
+    # Exclude bot authors
+    bot_authors = ['renovate', 'dependabot']
+    df = df[~df['author_login'].isin(bot_authors)]
+    
+    # Apply date filters
     if start_date:
         start = pd.to_datetime(start_date).tz_localize('UTC')
         df = df[df['createdAt'] >= start]
     if end_date:
         end = pd.to_datetime(end_date).tz_localize('UTC')
         df = df[df['createdAt'] <= end]
-    if excluded_authors and len(excluded_authors) > 0:
-        df = df[~df['author_login'].isin(excluded_authors)]
     
     # Group by week
     df['week'] = df['createdAt'].dt.to_period('W')
     
-    # Calculate metrics
+    # Sort weeks and create relative week numbers
     weekly_prs = df.groupby('week').size()
     weekly_contributors = df.groupby('week')['author_login'].nunique()
     weekly_ratio = weekly_prs / weekly_contributors
     
+    # Create relative week numbers (1-based)
+    weeks = sorted(weekly_ratio.index)
+    week_map = {week: i+1 for i, week in enumerate(weeks)}
+    
     return {
         'weekly_prs': weekly_prs,
         'weekly_contributors': weekly_contributors,
-        'weekly_ratio': weekly_ratio
+        'weekly_ratio': weekly_ratio,
+        'week_map': week_map
     }
 
 def create_plot(metrics):
     fig = go.Figure()
     
+    # Get x-axis values as relative week numbers
+    week_numbers = [metrics['week_map'][week] for week in metrics['weekly_ratio'].index]
+    
     # Add only the PRs per contributor trace
     fig.add_trace(go.Scatter(
-        x=metrics['weekly_ratio'].index.astype(str),
+        x=week_numbers,
         y=metrics['weekly_ratio'].values,
         name='PRs per Contributor',
-        mode='lines+markers'
+        mode='lines+markers',
+        hovertemplate='Week %{x}<br>PRs per Contributor: %{y:.2f}<extra></extra>'
     ))
     
     fig.update_layout(
         title='Weekly PRs per Contributor',
-        xaxis_title='Week',
+        xaxis_title='Week Number',
         yaxis_title='PRs per Contributor',
-        hovermode='x unified'
+        hovermode='x unified',
+        xaxis=dict(
+            tickmode='linear',
+            tick0=1,
+            dtick=1
+        )
     )
     
     return fig
@@ -70,11 +86,8 @@ def create_plot(metrics):
 @app.route('/')
 def index():
     df = load_pr_data('pr_data.json')
-    all_authors = sorted(login for login in df['author_login'].unique() if login is not None)
-    
     return render_template(
         'index.html',
-        authors=all_authors,
         min_date=df['createdAt'].min().tz_localize(None).strftime('%Y-%m-%d'),
         max_date=df['createdAt'].max().tz_localize(None).strftime('%Y-%m-%d')
     )
@@ -84,14 +97,11 @@ def update_plot():
     try:
         data = request.json
         df = load_pr_data('pr_data.json')
-        
         metrics = process_pr_data(
             df,
             start_date=data.get('start_date'),
-            end_date=data.get('end_date'),
-            excluded_authors=data.get('excluded_authors', [])
+            end_date=data.get('end_date')
         )
-        
         fig = create_plot(metrics)
         
         # Calculate summary statistics
