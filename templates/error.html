@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>GitHub PR Analysis Dashboard - Error</title>
+    <style>
+        .error-container {
+            margin: 20px;
+            padding: 15px;
+            border: 1px solid #dc3545;
+            border-radius: 5px;
+            background-color: #f8d7da;
+            color: #721c24;
+        }
+    </style>
+</head>
+<body>
+    <h1>GitHub PR Analysis Dashboard</h1>
+    
+    <div class="error-container">
+        <h2>Error</h2>
+        <p>{{ error }}</p>
+        <p>Please ensure that:</p>
+        <ul>
+            <li>The repositories.json configuration file exists</li>
+            <li>All repository data files specified in the configuration exist</li>
+            <li>The data files are valid JSON files containing PR data</li>
+        </ul>
+        <p>Available repositories: {{ repositories|join(', ') }}</p>
+        <p><a href="/">Retry</a></p>
+    </div>
+</body>
+</html>
