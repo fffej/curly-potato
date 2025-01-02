@@ -78,6 +78,9 @@ def preprocess_data(data):
     return df
 
 def plot_open_prs_per_day(df, output_dir):
+    """
+    Plots the number of open PRs per day.
+    """
     # Create a date range from the earliest createdAt to the latest closedAt
     start_date = df['createdAt'].min().floor('D')
     end_date = df['closedAt'].max().ceil('D')
@@ -102,6 +105,9 @@ def plot_open_prs_per_day(df, output_dir):
     plt.close()
 
 def plot_merged_prs_per_week_divided_by_contributors(df, output_dir):
+    """
+    Plots the number of PRs merged per week divided by the number of contributors.
+    """
     # Sort by mergedAt
     df_sorted = df.sort_values('mergedAt')
 
@@ -111,49 +117,27 @@ def plot_merged_prs_per_week_divided_by_contributors(df, output_dir):
     # Group by week and count merged PRs
     merged_per_week = df_sorted.groupby('week').size().rename('merged_prs')
 
-    # To get contributors in the previous 4 weeks, maintain a rolling window
-    weeks = merged_per_week.index.sort_values()
-    contributors_per_week = {}
-
-    # 'author' is already a string; no need to process it further
-    # Removed incorrect processing:
-    # df_sorted['author'] = df_sorted['author'].apply(lambda x: x['login'].lower())
-
-    for current_week in weeks:
-        # Define the window: previous 4 weeks
-        window_start = current_week - pd.Timedelta(weeks=4)
-        window_end = current_week - pd.Timedelta(seconds=1)
-
-        # Filter PRs within the window
-        window_df = df_sorted[(df_sorted['mergedAt'] >= window_start) & (df_sorted['mergedAt'] <= window_end)]
-        contributors = window_df['author'].unique()
-        contributors_per_week[current_week] = len(contributors)
-
-    contributors_series = pd.Series(contributors_per_week)
-
-    # Combine into a DataFrame
-    combined = pd.DataFrame({
-        'merged_prs': merged_per_week,
-        'contributors': contributors_series
-    }).fillna(0)
+    # Group by week and count unique contributors
+    contributors_per_week = df_sorted.groupby('week')['author'].nunique().rename('unique_contributors')
 
     # Calculate the ratio
-    combined['merged_prs_per_contributor'] = combined.apply(
-        lambda row: row['merged_prs'] / row['contributors'] if row['contributors'] > 0 else 0,
-        axis=1
-    )
+    ratio = (merged_per_week / contributors_per_week).rename('prs_per_contributor')
 
     # Plot
     plt.figure(figsize=(15,7))
-    combined['merged_prs_per_contributor'].plot(marker='o')
+    plt.plot(ratio.index, ratio.values, marker='o', label='PRs Merged per Contributor')
     plt.title('Number of PRs Merged Per Week Divided by Number of Contributors')
     plt.xlabel('Week')
-    plt.ylabel('Merged PRs / Contributors')
+    plt.ylabel('PRs Merged / Contributors')
+    plt.legend()
     plt.tight_layout()
-    plt.savefig(os.path.join(output_dir, 'merged_prs_per_week_divided_by_contributors.png'))
+    plt.savefig(os.path.join(output_dir, 'prs_per_week_divided_by_contributors.png'))
     plt.close()
 
 def plot_moving_average_contributors(df, output_dir):
+    """
+    Plots the total number of contributors per week with a rolling 4-week average.
+    """
     # Create a week column manually (start of the week)
     df['week'] = (df['mergedAt'] - pd.to_timedelta(df['mergedAt'].dt.weekday, unit='D')).dt.floor('D')
 
@@ -168,15 +152,20 @@ def plot_moving_average_contributors(df, output_dir):
 
     # Plot
     plt.figure(figsize=(15,7))
-    moving_avg.plot(marker='o')
-    plt.title('Moving Average of Total Number of Contributors Per Week')
+    plt.plot(contributors_per_week.index, contributors_per_week.values, marker='o', label='Unique Contributors')
+    plt.plot(moving_avg.index, moving_avg.values, marker='o', label='4-Week Rolling Average', linestyle='--')
+    plt.title('Total Number of Contributors with 4-Week Rolling Average')
     plt.xlabel('Week')
-    plt.ylabel('Moving Average of Contributors')
+    plt.ylabel('Number of Contributors')
+    plt.legend()
     plt.tight_layout()
-    plt.savefig(os.path.join(output_dir, 'moving_average_contributors.png'))
+    plt.savefig(os.path.join(output_dir, 'total_contributors_with_rolling_average.png'))
     plt.close()
 
 def plot_merge_heatmap(df, output_dir):
+    """
+    Plots a heatmap showing the frequency of PR merges by day of the week and hour of the day.
+    """
     # Extract hour of day
     df['merge_hour'] = df['mergedAt'].dt.hour
 
@@ -201,6 +190,9 @@ def plot_merge_heatmap(df, output_dir):
     plt.close()
 
 def plot_merge_duration_distribution(df, output_dir):
+    """
+    Plots the distribution of PR merge durations categorized into defined time buckets.
+    """
     # Define buckets in hours
     bins = [0, 1, 3, 6, 24, 48, 96, df['duration_hours'].max()]
     labels = ['0-1', '1-3', '3-6', '6-24', '24-48', '48-96', '96+']
@@ -219,6 +211,75 @@ def plot_merge_duration_distribution(df, output_dir):
     plt.tight_layout()
     plt.savefig(os.path.join(output_dir, 'merge_duration_distribution.png'))
     plt.close()
+
+# ======= New Functions Added Below =======
+
+def plot_total_contributors_with_rolling_average(df, output_dir):
+    """
+    Plots the total number of unique contributors per week along with a rolling 4-week average.
+    """
+    # Create a week column if not already present
+    if 'week' not in df.columns:
+        df['week'] = (df['mergedAt'] - pd.to_timedelta(df['mergedAt'].dt.weekday, unit='D')).dt.floor('D')
+    
+    # Group by week and count unique contributors
+    contributors_per_week = df.groupby('week')['author'].nunique().rename('unique_contributors')
+    
+    # Calculate rolling 4-week average
+    rolling_avg = contributors_per_week.rolling(window=4, min_periods=1).mean().rename('4_week_avg')
+    
+    # Combine into a single DataFrame
+    combined = pd.concat([contributors_per_week, rolling_avg], axis=1)
+    
+    # Plot
+    plt.figure(figsize=(15,7))
+    plt.plot(combined.index, combined['unique_contributors'], marker='o', label='Unique Contributors')
+    plt.plot(combined.index, combined['4_week_avg'], marker='o', label='4-Week Rolling Average', linestyle='--')
+    plt.title('Total Number of Contributors with 4-Week Rolling Average')
+    plt.xlabel('Week')
+    plt.ylabel('Number of Contributors')
+    plt.legend()
+    plt.tight_layout()
+    plt.savefig(os.path.join(output_dir, 'total_contributors_with_rolling_average.png'))
+    plt.close()
+
+def plot_prs_per_week_divided_by_contributors_with_rolling_average(df, output_dir):
+    """
+    Plots the number of PRs merged per week divided by the number of contributors,
+    along with a rolling 4-week average to smooth the data.
+    """
+    # Ensure 'week' column exists
+    if 'week' not in df.columns:
+        df['week'] = (df['mergedAt'] - pd.to_timedelta(df['mergedAt'].dt.weekday, unit='D')).dt.floor('D')
+    
+    # Group by week and count merged PRs
+    merged_per_week = df.groupby('week').size().rename('merged_prs')
+    
+    # Group by week and count unique contributors
+    contributors_per_week = df.groupby('week')['author'].nunique().rename('unique_contributors')
+    
+    # Calculate the ratio
+    ratio = (merged_per_week / contributors_per_week).rename('prs_per_contributor')
+    
+    # Calculate rolling 4-week average
+    rolling_avg = ratio.rolling(window=4, min_periods=1).mean().rename('4_week_avg')
+    
+    # Combine into a single DataFrame
+    combined = pd.concat([ratio, rolling_avg], axis=1)
+    
+    # Plot
+    plt.figure(figsize=(15,7))
+    plt.plot(combined.index, combined['prs_per_contributor'], marker='o', label='PRs Merged per Contributor')
+    plt.plot(combined.index, combined['4_week_avg'], marker='o', label='4-Week Rolling Average', linestyle='--')
+    plt.title('PRs Merged Per Week Divided by Number of Contributors with 4-Week Rolling Average')
+    plt.xlabel('Week')
+    plt.ylabel('PRs Merged / Contributors')
+    plt.legend()
+    plt.tight_layout()
+    plt.savefig(os.path.join(output_dir, 'prs_per_week_divided_by_contributors_with_rolling_average.png'))
+    plt.close()
+
+# ======= End of New Functions =======
 
 def main():
     args = parse_arguments()
@@ -242,6 +303,11 @@ def main():
     plot_moving_average_contributors(df, args.output_dir)
     plot_merge_heatmap(df, args.output_dir)
     plot_merge_duration_distribution(df, args.output_dir)
+
+    # ======= Call New Plot Functions =======
+    plot_total_contributors_with_rolling_average(df, args.output_dir)
+    plot_prs_per_week_divided_by_contributors_with_rolling_average(df, args.output_dir)
+    # ======= End of New Plot Calls =======
 
     print(f"Analysis complete. Graphs saved to {args.output_dir}")
 
