@@ -281,6 +281,34 @@ def plot_prs_per_week_divided_by_contributors_with_rolling_average(df, output_di
 
 # ======= End of New Functions =======
 
+def plot_size_vs_duration(df, output_dir):
+    """
+    Plots the correlation between PR size (additions + deletions) and duration to merge.
+    """
+    # Calculate PR size
+    df['size'] = df['additions'] + df['deletions']
+    
+    # Remove PRs with size 0 to avoid skewing the plot
+    df_filtered = df[df['size'] > 0]
+    
+    # Calculate Pearson correlation coefficient
+    correlation = df_filtered[['size', 'duration_hours']].corr().iloc[0,1]
+    
+    # Plot
+    plt.figure(figsize=(15,7))
+    sns.regplot(x='size', y='duration_hours', data=df_filtered, scatter_kws={'alpha':0.5})
+    plt.title('Correlation between PR Size and Duration to Merge')
+    plt.xlabel('PR Size (Additions + Deletions)')
+    plt.ylabel('Duration to Merge (Hours)')
+    
+    # Annotate correlation coefficient on the plot
+    plt.text(0.05, 0.95, f'Pearson Correlation: {correlation:.2f}', transform=plt.gca().transAxes,
+             fontsize=12, verticalalignment='top')
+    
+    plt.tight_layout()
+    plt.savefig(os.path.join(output_dir, 'size_vs_duration_scatter.png'))
+    plt.close()
+
 def main():
     args = parse_arguments()
 
@@ -307,6 +335,7 @@ def main():
     # ======= Call New Plot Functions =======
     plot_total_contributors_with_rolling_average(df, args.output_dir)
     plot_prs_per_week_divided_by_contributors_with_rolling_average(df, args.output_dir)
+    plot_size_vs_duration(df, args.output_dir)
     # ======= End of New Plot Calls =======
 
     print(f"Analysis complete. Graphs saved to {args.output_dir}")
