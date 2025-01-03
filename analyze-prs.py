@@ -309,6 +309,50 @@ def plot_size_vs_duration(df, output_dir):
     plt.savefig(os.path.join(output_dir, 'size_vs_duration_scatter.png'))
     plt.close()
 
+def plot_pr_size_distribution(df, output_dir):
+    """
+    Plots a histogram of PR size distribution defined as Abs(additions - deletions).
+    Buckets:
+        - Sizes of 10 up to 1000 lines.
+        - One bucket for sizes greater than 1000 lines.
+    
+    Parameters:
+    - df (pd.DataFrame): DataFrame containing PR data with 'additions' and 'deletions' columns.
+    - output_dir (str): Directory path to save the generated histogram.
+    """
+    # Check if required columns exist
+    if not {'additions', 'deletions'}.issubset(df.columns):
+        print("DataFrame must contain 'additions' and 'deletions' columns to plot PR size distribution.")
+        return
+    
+    # Calculate PR size
+    df['size'] = (df['additions'] - df['deletions']).abs()
+    
+    # Define bins: 0-10, 10-20, ..., 990-1000, 1000+
+    bins = list(range(0, 1001, 10)) + [float('inf')]
+    labels = [f"{i}-{i+10}" for i in range(0, 1000, 10)] + ['1000+']
+    
+    # Bin the 'size' data
+    df['size_bucket'] = pd.cut(df['size'], bins=bins, labels=labels, right=False)
+    
+    # Count the number of PRs in each bucket
+    size_distribution = df['size_bucket'].value_counts().sort_index()
+    
+    # Handle empty buckets by ensuring all labels are present
+    size_distribution = size_distribution.reindex(labels, fill_value=0)
+    
+    # Plotting
+    plt.figure(figsize=(20, 6))  # Increased width for better visibility with many buckets
+    sns.barplot(x=size_distribution.index, y=size_distribution.values, palette='viridis')
+    plt.title('Distribution of PR Sizes (Abs(Additions - Deletions))')
+    plt.xlabel('PR Size (Lines)')
+    plt.ylabel('Number of PRs')
+    plt.xticks(rotation=90)  # Rotate x-axis labels for readability
+    plt.tight_layout()
+    plt.savefig(os.path.join(output_dir, 'pr_size_distribution.png'))
+    plt.close()
+
+
 def main():
     args = parse_arguments()
 
@@ -331,12 +375,11 @@ def main():
     plot_moving_average_contributors(df, args.output_dir)
     plot_merge_heatmap(df, args.output_dir)
     plot_merge_duration_distribution(df, args.output_dir)
-
-    # ======= Call New Plot Functions =======
     plot_total_contributors_with_rolling_average(df, args.output_dir)
     plot_prs_per_week_divided_by_contributors_with_rolling_average(df, args.output_dir)
     plot_size_vs_duration(df, args.output_dir)
-    # ======= End of New Plot Calls =======
+    plot_pr_size_distribution(df, args.output_dir)
+    
 
     print(f"Analysis complete. Graphs saved to {args.output_dir}")
 
