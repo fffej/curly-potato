@@ -13,18 +13,4 @@ pip install -r requirements.txt
 ```
 
 Use the `python3 import-prs.py` to grab data.
-Run `python3 analyze.py` to produce some statistics.
-Use `python3 app.py` to produce some more.
-
-### App.py
-
-You'll need to put a `repositories.json` file in the same directory and link to the JSON files produced by `import-prs.py`. Here's an example
-
-```json
-{
-    "repositories": {
-        "Front end": "front-end/pull_requests.json",
-        "Back end": "back-end/pull_requests.json"
-    }
-}
-```
+Run `python3 analyze-prs.py` to produce some statistics.
