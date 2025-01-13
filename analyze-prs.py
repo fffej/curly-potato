@@ -352,6 +352,55 @@ def plot_pr_size_distribution(df, output_dir):
     plt.savefig(os.path.join(output_dir, 'pr_size_distribution.png'))
     plt.close()
 
+def calculate_time_to_tenth_pr(df, output_dir):
+    """
+    Calculates the time taken for each author to reach their tenth PR, total PRs,
+    and PR rate (PRs per day).
+    Outputs results to a CSV file.
+    
+    Parameters:
+    - df (pd.DataFrame): DataFrame containing PR data with 'author' and 'mergedAt' columns
+    - output_dir (str): Directory path to save the output CSV
+    """
+    # Sort PRs by author and merge date
+    df_sorted = df.sort_values(['author', 'mergedAt'])
+    
+    # Group by author and get the first 10 PRs for each
+    author_prs = df_sorted.groupby('author').agg(list)
+    
+    results = []
+    for author in author_prs.index:
+        merge_dates = pd.to_datetime(author_prs.loc[author, 'mergedAt'])
+        
+        # Only process authors with 10 or more PRs
+        if len(merge_dates) >= 10:
+            first_pr = merge_dates[0]
+            tenth_pr = merge_dates[9]  # Index 9 is the 10th PR
+            total_prs = len(merge_dates)
+            
+            # Calculate days since first PR
+            last_pr = merge_dates[-1]
+            days_since_first = max((last_pr - first_pr).days, 1)  # Ensure at least 1 day to avoid division by zero
+            
+            # Calculate PR rate (PRs per day)
+            pr_rate = total_prs / days_since_first
+            
+            results.append({
+                'Author': author,
+                'First PR': first_pr.strftime('%Y-%m-%d'),
+                'Tenth PR': tenth_pr.strftime('%Y-%m-%d'),
+                'Time to tenth PR (days)': (tenth_pr - first_pr).days,
+                'Total PRs': total_prs,
+                'PR Rate (PRs/day)': round(pr_rate, 3)
+            })
+    
+    # Convert results to DataFrame and sort by time to tenth PR
+    results_df = pd.DataFrame(results).sort_values('Time to tenth PR (days)')
+    
+    # Save to CSV
+    output_file = os.path.join(output_dir, 'time_to_tenth_pr.csv')
+    results_df.to_csv(output_file, index=False)
+    print(f"Time to tenth PR analysis saved to {output_file}")
 
 def main():
     args = parse_arguments()
@@ -379,7 +428,7 @@ def main():
     plot_prs_per_week_divided_by_contributors_with_rolling_average(df, args.output_dir)
     plot_size_vs_duration(df, args.output_dir)
     plot_pr_size_distribution(df, args.output_dir)
-    
+    calculate_time_to_tenth_pr(df, args.output_dir)    
 
     print(f"Analysis complete. Graphs saved to {args.output_dir}")
 
